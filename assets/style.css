@@ -1,0 +1,90 @@
+Div {
+    font-family:Verdana, Geneva, Tahoma, sans-serif;
+}
+
+#app-title {
+    text-align: center;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+#workout-editor {
+    margin-bottom: 25px;
+}
+
+.button-style {
+    color: white;
+    background-color: black;
+    border: 0px;
+    text-transform: uppercase;
+    --bs-btn-active-bg: black;
+}
+
+.button-style:hover {
+    background-color: #999;
+    border: 0px
+}
+
+.button-style:active {
+    background-color: #999;
+    border: 0px;
+}
+
+.button-style:disabled {
+    background-color: #999;
+    border: 0px;
+    opacity: 0.5;
+}
+
+#edit-page-buttons-div {
+    display: flex;
+    justify-content: space-between;
+}
+
+#workout-name {
+    color: black;
+    font-size: 1.5rem;
+}
+
+#select-workout-div {
+    justify-content: center;
+    display: flex;
+    margin-top: 25px;
+}
+
+.modal_header {
+    display: flex;
+    justify-content: center;
+}
+
+#countdown {
+    font-size: 100px;
+    display: flex;
+    justify-content: right;
+}
+
+#workout-content {
+    text-align: center;
+    font-size: 150px;
+}
+
+#next-exercise {
+    text-align: center;
+    font-size: 75px;
+}
+
+#workout-modal-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+#progress-bar {
+    --bs-progress-bar-bg: black;
+}
+
+#workout-mode-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 25px;
+}
