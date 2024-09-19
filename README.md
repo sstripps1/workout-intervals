@@ -9,10 +9,9 @@ For example, the app will make a *bell* sound when the workout begins, make a *b
 and make short *beep* sounds 3 times within the "Squats" interval (this is useful if for example you want to incorporate isometric 
 holds into the interval - so you might squat for 20 seconds, hold for 20 seconds, and then squat for 20 more before moving onto the 
 next interval).
-\
 
 ![save_and_load_workouts](screenshots/save_load.jpg)\
-Option to save the workout to redis and load previously saved workouts
+Option to save the workout to redis and load previously saved workouts.
 
 ## Run the workout
 ![run_workout](screenshots/workout_mode.jpg)\
