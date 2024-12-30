@@ -72,6 +72,12 @@ Div {
     justify-content: right;
 }
 
+#total-countdown {
+    font-size: 40px;
+    display: flex;
+    justify-content: right;
+}
+
 #workout-content {
     text-align: center;
     font-size: 150px;

@@ -21,6 +21,7 @@ from utils.helpers import (
     random_workout_id,
     create_workout_plan,
     find_next_exercise,
+    formulate_workout_duration,
 )
 
 from utils.constants import START_COUNTDOWN, DEFAUlT_DURATION
@@ -79,6 +80,7 @@ app.layout = [
                 dashGridOptions={"rowSelection": "multiple", "rowDragManaged": True},
                 columnSize="sizeToFit",
             ),
+            html.Div(id="workout-duration"),
             html.Div(
                 id="edit-page-buttons-div",
                 children=[
@@ -187,6 +189,7 @@ app.layout = [
                 [
                     dbc.ModalBody(
                         [
+                            html.Div(id="total-countdown"),
                             html.Div(
                                 id="countdown",
                                 children=START_COUNTDOWN,
@@ -252,13 +255,24 @@ app.layout = [
 def maintain_interval_order(virtual_data, row_data):
     if len(virtual_data) != len(row_data):
         return  # row was added or deleted - this is handled in another callback
-
-    # Update interval numbers based on row data
+    if not len(virtual_data):
+        set_props(
+            "workout-duration",
+            {"children": formulate_workout_duration(0, prepend_label=True)},
+        )
+    # Update interval numbers based on row data and
+    # update total workout duration
     i = 1
+    duration = 0
     for row in virtual_data:
         row["interval"] = i
+        duration += row["duration"]
         i += 1
     set_props("workout-editor", {"rowData": virtual_data})
+    set_props(
+        "workout-duration",
+        {"children": formulate_workout_duration(duration, prepend_label=True)},
+    )
 
 
 @callback(Input("add-interval", "n_clicks"), State("workout-editor", "rowData"))
@@ -414,6 +428,7 @@ def close_workout(close):
         set_props("next-exercise", {"children": ""})
         set_props("workout-plan", {"data": []})  # TODO: is this necessary?
         set_props("workout-modal", {"is_open": False})
+        set_props("total-countdown", {"children": ""})
 
 
 @callback(Input("pause-workout", "n_clicks"), State("workout-timer", "disabled"))
@@ -473,6 +488,18 @@ def progress_bar(n_intervals, workout_plan):
         total_duration = workout_plan["total_duration"]
         progress = int((n_intervals / total_duration) * 100)
         return progress, "{}%".format(progress)
+
+
+@callback(
+    Output("total-countdown", "children"),
+    Input("workout-timer", "n_intervals"),
+    State("workout-plan", "data"),
+)
+def total_countdown(n_intervals, workout_plan):
+    if "total_duration" not in workout_plan.keys():
+        return
+    total_length = workout_plan["total_duration"]
+    return formulate_workout_duration(total_length - n_intervals)
 
 
 @callback(

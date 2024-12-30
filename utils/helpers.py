@@ -105,3 +105,12 @@ def find_next_exercise(workout_plan, n_intervals, current_exercise):
             return "Up next: " + next_exercise
         else:
             i += 1
+
+
+def formulate_workout_duration(duration, prepend_label=False):
+    minutes = duration // 60
+    remaining_seconds = duration % 60
+    if prepend_label:
+        return f"Workout Length: {minutes}:{remaining_seconds:02d}"
+    else:
+        return f"{minutes}:{remaining_seconds:02d}"
