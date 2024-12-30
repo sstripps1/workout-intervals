@@ -82,15 +82,25 @@ app.layout = [
             html.Div(
                 id="edit-page-buttons-div",
                 children=[
-                    dbc.Button(
-                        "Add Interval",
-                        id="add-interval",
-                        n_clicks=0,
-                        class_name="button-style",
+                    html.Div(
+                        [
+                            dbc.Button(
+                                "Add Interval",
+                                id="add-interval",
+                                n_clicks=0,
+                                class_name="button-style",
+                            ),
+                            dbc.Button(
+                                "Delete Interval",
+                                id="delete-interval",
+                                n_clicks=0,
+                                class_name="button-style",
+                            ),
+                        ]
                     ),
                     dbc.Button(
-                        "Delete Interval",
-                        id="delete-interval",
+                        "Launch Workout",
+                        id="launch-workout",
                         n_clicks=0,
                         class_name="button-style",
                     ),
@@ -109,12 +119,6 @@ app.layout = [
                                 class_name="button-style",
                             ),
                         ]
-                    ),
-                    dbc.Button(
-                        "Launch Workout",
-                        id="launch-workout",
-                        n_clicks=0,
-                        class_name="button-style",
                     ),
                 ],
             ),
