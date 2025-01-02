@@ -304,7 +304,7 @@ def select_workout(select, saved_workout_name):
             redis_instance.hget("saved_workouts", saved_workout_name.encode("utf-8"))
         )
         set_props("workout-editor", {"rowData": saved_workout_data})
-        set_props("workout-name", {"value": saved_workout_name})
+        set_props("workout-name", {"value": saved_workout_name.replace("_", " ")})
         set_props("load-workout-modal", {"is_open": False})
 
 
@@ -496,7 +496,7 @@ def progress_bar(n_intervals, workout_plan):
     State("workout-plan", "data"),
 )
 def total_countdown(n_intervals, workout_plan):
-    if "total_duration" not in workout_plan.keys():
+    if not workout_plan or "total_duration" not in workout_plan.keys():
         return
     total_length = workout_plan["total_duration"]
     return formulate_workout_duration(total_length - n_intervals)
