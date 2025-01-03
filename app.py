@@ -2,27 +2,28 @@ import os
 import redis
 import json
 import dash_bootstrap_components as dbc
+import dash_ag_grid as dag
 
 from dash import (
     Dash,
     html,
-    dash_table,
     dcc,
     Input,
     Output,
     State,
     callback,
-    ctx,
     no_update,
     clientside_callback,
+    set_props,
 )
 
 from utils.helpers import (
     random_workout_id,
     create_workout_plan,
     find_next_exercise,
+    formulate_workout_duration,
 )
-from utils.styles import DATATABLE_STYLES
+
 from utils.constants import START_COUNTDOWN, DEFAUlT_DURATION
 
 app = Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -36,29 +37,72 @@ app.layout = [
         [
             html.H1("Workout Intervals", id="app-title"),
             dbc.Input(id="workout-name", value=random_workout_id()),
-            dash_table.DataTable(
+            dag.AgGrid(
                 id="workout-editor",
-                columns=[
-                    {"name": "Interval", "id": "interval", "editable": False},
-                    {"name": "Exercise", "id": "exercise"},
-                    {"name": "Duration(s)", "id": "duration", "type": "numeric"},
-                    {"name": "Sub-Intervals", "id": "sub-intervals", "type": "numeric"},
+                columnDefs=[
+                    {
+                        "headerName": "INTERVAL",
+                        "field": "interval",
+                        "editable": False,
+                        "rowDrag": True,
+                        "suppressMovable": True,
+                        "resizable": False,
+                        "sortable": False,
+                    },
+                    {
+                        "headerName": "EXERCISE",
+                        "field": "exercise",
+                        "editable": True,
+                        "suppressMovable": True,
+                        "resizable": False,
+                        "sortable": False,
+                    },
+                    {
+                        "headerName": "DURATION (S)",
+                        "field": "duration",
+                        "editable": True,
+                        "type": "numericColumn",
+                        "suppressMovable": True,
+                        "resizable": False,
+                        "sortable": False,
+                    },
+                    {
+                        "headerName": "SUB-INTERVALS",
+                        "field": "sub-intervals",
+                        "editable": True,
+                        "type": "numericColumn",
+                        "suppressMovable": True,
+                        "resizable": False,
+                        "sortable": False,
+                    },
                 ],
-                data=[],
-                editable=True,
-                row_deletable=True,
-                style_header=DATATABLE_STYLES["style_header"],
-                style_cell=DATATABLE_STYLES["style_cell"],
-                style_data_conditional=DATATABLE_STYLES["style_data_conditional"],
-                style_table=DATATABLE_STYLES["style_table"],
-                fixed_rows=DATATABLE_STYLES["fixed_rows"],
+                rowData=[],
+                dashGridOptions={"rowSelection": "multiple", "rowDragManaged": True},
+                columnSize="sizeToFit",
             ),
+            html.Div(id="workout-duration"),
             html.Div(
                 id="edit-page-buttons-div",
                 children=[
+                    html.Div(
+                        [
+                            dbc.Button(
+                                "Add Interval",
+                                id="add-interval",
+                                n_clicks=0,
+                                class_name="button-style",
+                            ),
+                            dbc.Button(
+                                "Delete Interval",
+                                id="delete-interval",
+                                n_clicks=0,
+                                class_name="button-style",
+                            ),
+                        ]
+                    ),
                     dbc.Button(
-                        "Add Interval",
-                        id="add-interval",
+                        "Launch Workout",
+                        id="launch-workout",
                         n_clicks=0,
                         class_name="button-style",
                     ),
@@ -77,12 +121,6 @@ app.layout = [
                                 class_name="button-style",
                             ),
                         ]
-                    ),
-                    dbc.Button(
-                        "Launch Workout",
-                        id="launch-workout",
-                        n_clicks=0,
-                        class_name="button-style",
                     ),
                 ],
             ),
@@ -151,6 +189,7 @@ app.layout = [
                 [
                     dbc.ModalBody(
                         [
+                            html.Div(id="total-countdown"),
                             html.Div(
                                 id="countdown",
                                 children=START_COUNTDOWN,
@@ -212,56 +251,34 @@ app.layout = [
 ]
 
 
-@callback(
-    Output("workout-editor", "data"),
-    Output("workout-name", "value"),
-    Input("add-interval", "n_clicks"),
-    Input("workout-editor", "data_previous"),
-    Input("select-workout", "n_clicks"),
-    State("workout-editor", "data"),
-    State("saved-workouts", "value"),
-)
-def create_workout(
-    add, row_deleted, saved_workout_selected, current, saved_workout_value
-):
-    """
-    Callback controlling the editing of the create workout datatable
+@callback(Input("workout-editor", "virtualRowData"), State("workout-editor", "rowData"))
+def maintain_interval_order(virtual_data, row_data):
+    if len(virtual_data) != len(row_data):
+        return  # row was added or deleted - this is handled in another callback
+    if not len(virtual_data):
+        set_props(
+            "workout-duration",
+            {"children": formulate_workout_duration(0, prepend_label=True)},
+        )
+    # Update interval numbers based on row data and
+    # update total workout duration
+    i = 1
+    duration = 0
+    for row in virtual_data:
+        row["interval"] = i
+        duration += row["duration"]
+        i += 1
+    set_props("workout-editor", {"rowData": virtual_data})
+    set_props(
+        "workout-duration",
+        {"children": formulate_workout_duration(duration, prepend_label=True)},
+    )
 
-    Inputs:
-        add (int): the number of clicks on the "add interval" button
-        row_deleted (list): the data in the workout-editor table prior to a row deletion
-        saved_workout_selected (int): the number of clicks on the "select workout" button.
-            used to retrieve a saved workout from redis
 
-    States:
-        current (list): the workout data as it currently exists in the workout editor table
-        saved_workout_value (str): the name of the selected saved workout
-
-    Outputs:
-        list: the workout data in the workout editor table
-        str: the name of the workout
-    """
-    trigger = ctx.triggered_id  # callback context
-
-    # Load workout from redis
-    if trigger == "select-workout" and saved_workout_selected:
-        return json.loads(
-            redis_instance.hget("saved_workouts", saved_workout_value.encode("utf-8"))
-        ), saved_workout_value.replace("_", " ")
-
-    # Update interval numbers when row is deleted
-    if trigger == "workout-editor" and len(current) < len(row_deleted):
-        i = 1
-        for row in current:
-            row["interval"] = i
-            i += 1
-
-    # Add new row
-    if trigger == "add-interval" and add:
-        if current:
-            next_interval = current[-1]["interval"] + 1
-        else:
-            next_interval = 1
+@callback(Input("add-interval", "n_clicks"), State("workout-editor", "rowData"))
+def add_interval(add, current):
+    if add:
+        next_interval = len(current) + 1
         current.append(
             {
                 "interval": next_interval,
@@ -270,301 +287,183 @@ def create_workout(
                 "sub-intervals": 1,
             }
         )
-    return current, no_update
+        set_props("workout-editor", {"rowData": current})
+
+
+@callback(Input("delete-interval", "n_clicks"))
+def delete_intervals(delete):
+    if delete:
+        set_props("workout-editor", {"deleteSelectedRows": True})
+
+
+# TODO: test this callback
+@callback(Input("select-workout", "n_clicks"), State("saved-workouts", "value"))
+def select_workout(select, saved_workout_name):
+    if select:
+        saved_workout_data = json.loads(
+            redis_instance.hget("saved_workouts", saved_workout_name.encode("utf-8"))
+        )
+        set_props("workout-editor", {"rowData": saved_workout_data})
+        set_props("workout-name", {"value": saved_workout_name.replace("_", " ")})
+        set_props("load-workout-modal", {"is_open": False})
+
+
+# TODO: test this
+@callback(Input("load-workout", "n_clicks"))
+def load_saved_workouts(load):
+    if load:
+        try:
+            saved_workouts = [
+                w.decode("utf-8") for w in redis_instance.hkeys("saved_workouts")
+            ]  # Decode saved names to string format
+        except:
+            saved_workouts = []
+        if not len(saved_workouts):  # no workouts saved
+            set_props("load-workout-alert", {"is_open": True})
+        else:
+            saved_workouts = [
+                {"label": w.replace("_", " "), "value": w} for w in saved_workouts
+            ]
+            set_props("load-workout-modal", {"is_open": True})
+            set_props("saved-workouts", {"options": saved_workouts})
 
 
 @callback(
-    Output("load-workout-modal", "is_open"),
-    Output("saved-workouts", "options"),
-    Output("load-workout-alert", "is_open"),
-    Input("load-workout", "n_clicks"),
-    Input("select-workout", "n_clicks"),
-)
-def load_saved_workouts(load_clicks, select_clicks):
-    """
-    Callback controlling the selection of saved workouts via the load-workout-modal
-
-    Inputs:
-        load_clicks (int): the number of times the "load workout" button has been clicked
-        select_clicks (int): the number of timees the "select workout" button has been clicked
-
-    Outputs:
-        bool: whether or not the load-workout-modal is open
-        list: the dropdown options for the saved-workouts dropdown
-        bool: whether or not the load-workout-alert is displayed
-    """
-    trigger = ctx.triggered_id
-
-    # Selecting a saved workout
-    if trigger == "select-workout" and select_clicks:
-        return False, no_update, no_update
-
-    # Preventing select workout modal from opening on page load
-    if not load_clicks:
-        return no_update, no_update, no_update
-
-    # Load saved workouts from redis - uses try/except to handle redis connection issues
-    try:
-        saved_workouts = [
-            w.decode("utf-8") for w in redis_instance.hkeys("saved_workouts")
-        ]  # Decode saved names to string format
-    except:
-        saved_workouts = []
-
-    # Return empty list if there are no saved workouts, or no connection to redis
-    if not len(saved_workouts):
-        return False, no_update, True
-
-    # Format workout names to be displayed
-    saved_workouts = [
-        {"label": w.replace("_", " "), "value": w} for w in saved_workouts
-    ]
-    return True, saved_workouts, no_update
-
-
-@callback(
-    Output("save-workout-alert", "children"),
-    Output("save-workout-alert", "is_open"),
-    Output("save-workout-alert", "color"),
     Input("save-workout", "n_clicks"),
     State("workout-name", "value"),
-    State("workout-editor", "data"),
+    State("workout-editor", "rowData"),
 )
-def save_workout(n_clicks, workout_name, data):
-    """
-    Callback controlling the 'save workout' functionality
-
-    Inputs:
-        n_clicks (int): the number of times the save-workout button has been clicked
-
-    States:
-        workout_name (str): the name of the workout to be saved
-        data (list): the workout data as it exists in the workout editor table
-
-    Outputs:
-        str: the message to be displayed when a user attempts to save a workout
-        bool: whether or not the save-workout-alert is displayed
-        str: the color of the alert, according to the dbc options
-    """
-    if not n_clicks:
-        return no_update, no_update, no_update
-
-    # Prevent user from saving an empty workout
-    if not len(data):
-        return "Workout is empty!", True, "danger"
-
-    # Create workout name if user deleted it
+def save_workout(save, workout_name, workout_data):
+    if not save:
+        return
+    if not len(workout_data):
+        set_props("save-workout-alert", {"children": "Workout is empty!"})
+        set_props("save-workout-alert", {"is_open": True})
+        set_props("save-workout-alert", {"color": "danger"})
+        return  # TODO: make sure this works
     if not workout_name:
         workout_name = "Workout #{}".format(random_workout_id)
-
     workout_id = workout_name.replace(
         " ", "_"
     )  # remove spaces from name to create workout_id
     try:
         # Display success message if data is successfully set in redis
-        redis_instance.hset("saved_workouts", workout_id, json.dumps(data))
-        return "'{}' successfully saved!".format(workout_name), True, "success"
-    except:
-        # Alert user if redis cannot be accessed
-        return (
-            "Cannot save workout because redis connection cannot be established",
-            True,
-            "danger",
+        redis_instance.hset("saved_workouts", workout_id, json.dumps(workout_data))
+        set_props(
+            "save-workout-alert",
+            {"children": f"'{workout_name}' successfully saved!"},
         )
+        set_props("save-workout-alert", {"is_open": True})
+        set_props("save-workout-alert", {"color": "success"})
+    except:
+        set_props(
+            "save-workout-alert",
+            {
+                "children": "Cannot save workout because redis connection cannot be established"
+            },
+        )
+        set_props("save-workout-alert", {"is_open": True})
+        set_props("save-workout-alert", {"color": "danger"})
 
 
 @callback(Output("select-workout", "disabled"), Input("saved-workouts", "value"))
 def allow_saved_workout_selection(selection):
-    """
-    Callback controlling whether or not the "Select Workout" button can be pressed
-    Inputs:
-        selection (str): the name of the saved workout (according to redis)
-
-    Outputs:
-        bool: whether or not the select-workout button is disabled
-    """
 
     return False if selection else True
 
 
-@callback(
-    Output("workout-plan", "data"),
-    Output("workout-modal", "is_open"),
-    Output("workout-launch-alert", "children"),
-    Output("workout-launch-alert", "is_open"),
-    Input("launch-workout", "n_clicks"),
-    Input("close-workout", "n_clicks"),
-    State("workout-editor", "data"),
-)
-def workout_mode(launch, close, table):
-    """
-    Callback which launches workout mode and stores data in workout-plan
-
-    Inputs:
-        launch (int): the number of clicks on the "launch workout" button
-        close (int): the number of clicks on the "close workout" button
-
-    States:
-        table (list): the data in the workout editor table, with each list item corresponding
-            to a row in the table
-
-    Outputs:
-        dict: the schema of the workout
-        bool: whether the workout modal is open
-        str: the content of workout-launch-alert, should there be an issue with launching
-            the workout (e.g. workout is empty)
-        bool: whether the workout-launch-alert should be displayed
-    """
-    trigger = ctx.triggered_id  # callback context
-
-    # Reset workout data when workout is closed
-    if trigger == "close-workout" and close:
-        return [], False, no_update, no_update
-
-    # Prevent opening of workout modal until launch button is pressed
+@callback(Input("launch-workout", "n_clicks"), State("workout-editor", "rowData"))
+def launch_workout(launch, workout_data):
     if not launch:
-        return no_update, no_update, no_update, no_update
+        return
 
     # Handling the case where workout is empty
-    if not len(table):
-        return (no_update, no_update, "Please add at least 1 interval", True)
-
+    if not len(workout_data):
+        set_props(
+            "workout-launch-alert", {"children": "Please add at least 1 interval"}
+        )
+        set_props("workout-launch-alert", {"is_open": True})
+        return
     # Converts tabular workout data to data to be stored in "workout-plan"
-    plan = create_workout_plan(
-        table, timestamp=START_COUNTDOWN
-    )  # start first exercise after START_COUNTDOWN seconds
+    # Start first exercise after START_COUNTDOWN seconds
+    plan = create_workout_plan(workout_data, timestamp=START_COUNTDOWN)
 
-    # Display error if there are issues with the workout_plan
     if type(plan) == str:
-        return no_update, no_update, plan, True
-
-    return plan, True, no_update, no_update
+        set_props("workout-launch-alert", {"children": plan})
+        set_props("workout-launch-alert", {"is_open": True})
+    else:
+        set_props("workout-plan", {"data": plan})
+        set_props("workout-modal", {"is_open": True})
 
 
 @callback(
-    Output("workout-timer", "disabled"),
-    Output("workout-content", "children"),
-    Output("pause-workout", "children"),
-    Output("trigger-audio", "data"),
-    Output("workout-timer", "n_intervals"),
-    Output("pause-workout", "disabled"),
-    Output("next-exercise", "children"),
     Input("start-workout", "n_clicks"),
-    Input("pause-workout", "n_clicks"),
-    Input("close-workout", "n_clicks"),
-    Input("workout-timer", "n_intervals"),
-    State("workout-plan", "data"),
     State("workout-timer", "disabled"),
-    prevent_initial_call=True,
+    State("workout-plan", "data"),
 )
-def operate_workout(
-    start_click, pause_click, close_workout, n_intervals, workout_plan, timer_disabled
-):
-    """
-    Callback which operates while the workout is launched. Handles the start, pause, and close
-    buttons, the timer, and the data displayed on the workout screen
-
-    Inputs:
-        start_click (int): the number of times the start-workout button has been clicked
-        pause_workout (int): the number of times the pause-workout button has been clicked
-        close_workout (int): the number of times the close-workout button has been clicked
-        n_intervals (int): the number of seconds elapsed on the workout timer. this value
-            does not accumulate when workout-timer is disabled
-
-    States:
-        workout-plan (dict): the schema of the workout. contains the timestamp markers and
-            their corresponding exercises and audio sounds. also contains metadata such as
-            the total workout duration
-        timer_disabled (bool): indicates whether or not the workout-timer is currently disabled
-
-    Outputs:
-        bool: whether or not the workout-timer is disabled (e.g. when the pause or close button
-            are pressed)
-        str: the name of the exercise for the current interval
-        str: the text displayed on the pause button (changes to 'resume' when the workout is
-            currently paused)
-        str: the name of the audio to be played - either "bell", "beep", or "short_beep"
-        int: the number of seconds elapsed on the workout timer. this value is reset when the
-            workout is closed
-        bool: whether or not the pause-workout button is disabled
-        str: the name of the exercise for the next interval
-    """
-
-    # Establish callback context - determines which input caused the callback to fire
-    trigger = ctx.triggered_id
-
-    # If start button pressed again while workout has already started, nothing happens
-    if trigger == "start-workout" and not timer_disabled:
-        return (
-            no_update,
-            no_update,
-            no_update,
-            no_update,
-            no_update,
-            no_update,
-            no_update,
-        )
-
-    # Start the workout
-    elif trigger == "start-workout" and start_click:
+def start_workout(start, timer_disabled, workout_plan):
+    if start and not timer_disabled:
+        return
+    if start:
         first_exercise = (
             "Up next: "
             + workout_plan[str(workout_plan["timestamp_list"][0])]["exercise"]
         )
-        return False, "Starting workout", no_update, "bell", 0, False, first_exercise
+        set_props("workout-timer", {"disabled": False})
+        set_props("workout-content", {"children": "Starting workout"})
+        set_props("trigger-audio", {"data": "bell"})
+        set_props("workout-timer", {"n_intervals": 0})
+        set_props("pause-workout", {"disabled": False})
+        set_props("next-exercise", {"children": first_exercise})
 
-    # Close workout - reset n_intervals
-    if trigger == "close-workout":
-        return True, "Workout not started", "Pause workout", "bell", 0, True, ""
 
-    # Pause workout
-    if trigger == "pause-workout" and pause_click:
-        if timer_disabled:
-            return (
-                False,
-                no_update,
-                "Pause Workout",
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-            )
-        else:
-            return (
-                True,
-                no_update,
-                "Resume Workout",
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-            )
+@callback(Input("close-workout", "n_clicks"))
+def close_workout(close):
+    if close:
+        set_props("workout-timer", {"disabled": True})
+        set_props("workout-content", {"children": "Workout not started"})
+        set_props("pause-workout", {"children": "Pause Workout"})
+        set_props("workout-timer", {"n_intervals": 0})
+        set_props("pause-workout", {"disabled": True})
+        set_props("next-exercise", {"children": ""})
+        set_props("workout-plan", {"data": []})  # TODO: is this necessary?
+        set_props("workout-modal", {"is_open": False})
+        set_props("total-countdown", {"children": ""})
 
-    # Update content based on timer
-    # This section of code runs when n_intervals matches a timestamp in workout_plan
-    if trigger == "workout-timer" and n_intervals in workout_plan["timestamp_list"]:
-        timestamp_str = str(n_intervals)  # timestamp keys in workout_plan are strings
+
+@callback(Input("pause-workout", "n_clicks"), State("workout-timer", "disabled"))
+def pause_workout(pause, timer_disabled):
+    if pause and timer_disabled:
+        set_props("workout-timer", {"disabled": False})
+        set_props("pause-workout", {"children": "Pause Workout"})
+    elif pause:
+        set_props("workout-timer", {"disabled": True})
+        set_props("pause-workout", {"children": "Resume Workout"})
+
+
+@callback(
+    Input("workout-timer", "n_intervals"),
+    State("workout-plan", "data"),
+    State("workout-timer", "disabled"),
+)
+def operate_workout(n_intervals, workout_plan, timer_disabled):
+    if timer_disabled:
+        return
+    if n_intervals in workout_plan["timestamp_list"]:
+        timestamp_str = str(n_intervals)
         current_exercise = workout_plan[timestamp_str]["exercise"]
         if current_exercise == "Finished":
-            disabled = True
-            next_exercise = ""
+            set_props("workout-timer", {"disabled": True})
+            set_props("next-exercise", {"children": ""})
+            set_props("pause-workout", {"disabled": True})
         else:
-            disabled = no_update
             next_exercise = find_next_exercise(
                 workout_plan, n_intervals, current_exercise
             )
-        return (
-            disabled,
-            current_exercise,
-            no_update,
-            workout_plan[timestamp_str]["audio"],
-            n_intervals,
-            disabled,
-            next_exercise,
-        )
+            set_props("next-exercise", {"children": next_exercise})
 
-    # No updates when timer does not match a timestamp in workout_plan
-    return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        set_props("workout-content", {"children": current_exercise})
+        set_props("trigger-audio", {"data": workout_plan[timestamp_str]["audio"]})
 
 
 @callback(
@@ -572,16 +471,6 @@ def operate_workout(
     Input("trigger-audio", "data"),
 )
 def change_audio(audio):
-    """
-    Updates the audio sound based on the place in the workout (i.e. start and end with the
-        'bell' sound, use a 'beep' when changing exercises, use 'short_beep' for sub-intervals)
-
-    Inputs:
-        audio (str): the name of the audio sound to be played
-
-    Outputs:
-        str: the url of the audio file corresponding to the desired sound
-    """
     return "/assets/{}.mp3".format(audio)
 
 
@@ -593,26 +482,24 @@ def change_audio(audio):
     prevent_intial_call=True,
 )
 def progress_bar(n_intervals, workout_plan):
-    """
-    Controls the progress bar at the bottom of the launched workout page
-
-    Inputs:
-        n_intervals (int): The number of seconds elapsed in the workout
-
-    States:
-        workout_plan (dict): The schema of the workout. Importantly, contains the total
-            duration of the workout
-
-    Outputs:
-        int: The percent completion of the workout
-        str: String representation of the percent completion
-    """
     if not n_intervals:
         return 0, "0% complete"
     else:
         total_duration = workout_plan["total_duration"]
         progress = int((n_intervals / total_duration) * 100)
         return progress, "{}%".format(progress)
+
+
+@callback(
+    Output("total-countdown", "children"),
+    Input("workout-timer", "n_intervals"),
+    State("workout-plan", "data"),
+)
+def total_countdown(n_intervals, workout_plan):
+    if not workout_plan or "total_duration" not in workout_plan.keys():
+        return
+    total_length = workout_plan["total_duration"]
+    return formulate_workout_duration(total_length - n_intervals)
 
 
 @callback(
@@ -623,22 +510,6 @@ def progress_bar(n_intervals, workout_plan):
     prevent_initial_call=True,
 )
 def count_down(n_intervals, workout_plan, current_count):
-    """
-    Callback which controls the interval countdown
-
-    Inputs:
-        n_intervals (int): the number of seconds elapsed in the workout
-
-    States:
-        workout-plan (dict): the schema of the workout. contains the timestamp markers and
-            their corresponding exercises and audio sounds. also contains metadata such as
-            the total workout duration
-        current_count (int): the value currently displayed in the countdown
-
-    Outputs:
-        int: the value to be displayed in the countdown
-    """
-
     # If workout has not started
     if int(n_intervals) == 0:
         return START_COUNTDOWN
@@ -672,15 +543,6 @@ clientside_callback(
     Input("trigger-audio", "data"),
     prevent_initial_call=True,
 )
-"""
-Clientside callback to make the audio sound
-
-Inputs:
-    trigger-audio (str): the name of the audio sound to be played
-
-Outputs
-    str: a dummy output, no purpose other than to have a complete callback
-"""
 
 
 if __name__ == "__main__":

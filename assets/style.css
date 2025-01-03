@@ -1,5 +1,5 @@
 Div {
-    font-family:Verdana, Geneva, Tahoma, sans-serif;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
 }
 
 #app-title {
@@ -10,6 +10,15 @@ Div {
 
 #workout-editor {
     margin-bottom: 25px;
+    width: 100%;
+    --ag-header-foreground-color: white;
+    --ag-header-background-color: black;
+    --ag-background-color: white;
+    --ag-odd-row-background-color: white;
+    --ag-alpine-active-color: rgb(192, 192, 192);
+    --ag-selected-row-background-color: rgb(192, 192, 192, 0.3);
+    --ag-row-hover-color: rgb(220, 220, 220, 0.1);
+    --ag-input-focus-border-color: rgb(192, 192, 192, 0.4);
 }
 
 .button-style {
@@ -59,6 +68,12 @@ Div {
 
 #countdown {
     font-size: 100px;
+    display: flex;
+    justify-content: right;
+}
+
+#total-countdown {
+    font-size: 40px;
     display: flex;
     justify-content: right;
 }
