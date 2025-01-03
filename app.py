@@ -387,7 +387,6 @@ def launch_workout(launch, workout_data):
     # Converts tabular workout data to data to be stored in "workout-plan"
     # Start first exercise after START_COUNTDOWN seconds
     plan = create_workout_plan(workout_data, timestamp=START_COUNTDOWN)
-
     if type(plan) == str:
         set_props("workout-launch-alert", {"children": plan})
         set_props("workout-launch-alert", {"is_open": True})
@@ -452,7 +451,12 @@ def operate_workout(n_intervals, workout_plan, timer_disabled):
     if n_intervals in workout_plan["timestamp_list"]:
         timestamp_str = str(n_intervals)
         current_exercise = workout_plan[timestamp_str]["exercise"]
-        if current_exercise == "Finished":
+        if (
+            not current_exercise
+        ):  # the current exercise is not changing, just trigger the audio
+            set_props("trigger-audio", {"data": workout_plan[timestamp_str]["audio"]})
+            return
+        elif current_exercise == "Finished":
             set_props("workout-timer", {"disabled": True})
             set_props("next-exercise", {"children": ""})
             set_props("pause-workout", {"disabled": True})
@@ -464,14 +468,6 @@ def operate_workout(n_intervals, workout_plan, timer_disabled):
 
         set_props("workout-content", {"children": current_exercise})
         set_props("trigger-audio", {"data": workout_plan[timestamp_str]["audio"]})
-
-
-@callback(
-    Output("audio-player", "src"),
-    Input("trigger-audio", "data"),
-)
-def change_audio(audio):
-    return "/assets/{}.mp3".format(audio)
 
 
 @callback(
@@ -517,7 +513,7 @@ def count_down(n_intervals, workout_plan, current_count):
     # When new interval begins, update the countdown
     if (
         n_intervals in workout_plan["timestamp_list"]
-        and workout_plan[str(n_intervals)]["countdown"]  # countdown in non-zero
+        and workout_plan[str(n_intervals)]["countdown"]  # countdown is non-zero
     ):
         return workout_plan[str(n_intervals)]["countdown"]
 
@@ -528,6 +524,14 @@ def count_down(n_intervals, workout_plan, current_count):
     # Decrease the countdown by 1 if no interval change
     else:
         return current_count - 1
+
+
+@callback(
+    Output("audio-player", "src"),
+    Input("trigger-audio", "data"),
+)
+def change_audio(audio):
+    return "/assets/{}.mp3".format(audio)
 
 
 clientside_callback(
