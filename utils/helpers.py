@@ -30,6 +30,29 @@ def random_workout_id():
     return "Workout #" + "".join(random.choice(string.digits) for i in range(4))
 
 
+def add_seconds_left_sounds(plan, n_seconds_left=3):
+    seconds_left_dict = {}
+    seconds_left_timestamps = []
+    timestamps = plan["timestamp_list"]
+    for timestamp in timestamps:
+        for i in range(1, n_seconds_left + 1):
+            seconds_left_timestamp = timestamp - i
+            if seconds_left_timestamp - i > 0:
+                seconds_left_dict.update(
+                    {
+                        seconds_left_timestamp: {
+                            "exercise": "",
+                            "audio": "short_beep",
+                            "countdown": 0,
+                        }
+                    }
+                )
+                seconds_left_timestamps.append(seconds_left_timestamp)
+    plan.update(seconds_left_dict)
+    plan["timestamp_list"].extend(seconds_left_timestamps)
+    return plan
+
+
 def create_workout_plan(table, timestamp):
     """
     Turns the tabular workout data into a dictionary readable during the workout
@@ -68,7 +91,7 @@ def create_workout_plan(table, timestamp):
                     "countdown": countdown,
                 }
                 sub_timestamp = si
-                interval_audio = "short_beep"
+                interval_audio = "short_beeps"
                 countdown = 0  # do not update countdown after first iteration
         timestamp += duration
 
@@ -79,6 +102,8 @@ def create_workout_plan(table, timestamp):
     )  # additionally store timestamp keys in list
     plan["total_duration"] = timestamp
 
+    # Add in sounds for last 3 seconds of each interval or sub-interval
+    plan = add_seconds_left_sounds(plan)
     return plan
 
 
